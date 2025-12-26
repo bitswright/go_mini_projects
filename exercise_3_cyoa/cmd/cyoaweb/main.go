@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"log"
-	"encoding/json"
 	"github.com/bitswright/go_mini_projects/exercise_3_cyoa"
 )
 
@@ -22,14 +21,12 @@ func main() {
 		panic(err)
 	}
 
-	// Note:
-	// 		In json Marshall and Unmarshall we are supposed to pass []byte
-	// 		But in NewDecoder we are suppose to pass io.Reader
-	jsonDecoder := json.NewDecoder(file)
-	var story cyoa.Story
-	if err := jsonDecoder.Decode(&story); err != nil {
+	story, err := cyoa.GetStoryFromJson(file)
+	if err != nil {
 		log.Fatalf("Error while decoding json. Error: %s", err)
 	}
+
+
 
 	fmt.Printf("%+v\n", story)
 }
