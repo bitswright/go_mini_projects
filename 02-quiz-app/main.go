@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"time"
 )
@@ -14,12 +16,17 @@ type problem struct {
 }
 
 func main() {
-	problemsFileName := "problems.csv"
-	timeLimitInSeconds := 2
+	problemsFileName := flag.String("csv_file_name", "problems.csv", "Path to the CSV file containing the quiz problems")
+	timeLimitInSeconds := flag.Int("quiz_time_limit", 30, "Time limit for the quiz in seconds")
+	flag.Parse()
 
-	problems := getProblems(problemsFileName)
+	rand.Seed(time.Now().UnixNano())
 
-	score, questionsAttempted := take_test(problems, timeLimitInSeconds)
+	problems := getProblems(*problemsFileName)
+
+	shuffleProblems(problems)
+
+	score, questionsAttempted := takeTest(problems, *timeLimitInSeconds)
 
 	fmt.Printf("You have attempted %d question(s). You score %d out of %d.\n", questionsAttempted, score, len(problems))
 }
@@ -52,11 +59,12 @@ func getProblems(problemsFileName string) []problem {
 	return problems
 }
 
-func take_test(problems []problem, timeLimitInSeconds int) (int, int) {
+func takeTest(problems []problem, timeLimitInSeconds int) (int, int) {
 	correctAnswers := 0
 	var answerByUser string
+	var quizTimerCh <-chan time.Time
 
-	timer := time.NewTimer(time.Duration(timeLimitInSeconds) * time.Second)
+	quizTimerCh = startTimer(timeLimitInSeconds)
 
 	for i, problem := range problems {
 		fmt.Printf("Problem#%d: %s is ", i, problem.question)
@@ -71,7 +79,7 @@ func take_test(problems []problem, timeLimitInSeconds int) (int, int) {
 
 		// wait for user input or timeout
 		select {
-		case <-timer.C:
+		case <-quizTimerCh:
 			fmt.Println("\nTime is up!")
 			return correctAnswers, i
 		case answerByUser = <-inputChannel:
@@ -81,4 +89,14 @@ func take_test(problems []problem, timeLimitInSeconds int) (int, int) {
 		}
 	}
 	return correctAnswers, len(problems)
+}
+
+func startTimer(timeLimitInSeconds int) <-chan time.Time {
+	return time.After(time.Duration(timeLimitInSeconds) * time.Second)
+}
+
+func shuffleProblems(problems []problem) {
+	rand.Shuffle(len(problems), func(i, j int) {
+		problems[i], problems[j] = problems[j], problems[i]
+	})
 }
