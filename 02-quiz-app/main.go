@@ -1,18 +1,25 @@
 package main
 
 import (
+	"bufio"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"text/tabwriter"
 	"time"
 )
 
 type problem struct {
 	question string
 	answer   string
+}
+
+type problemAttempt struct {
+	problem         problem
+	answerAttempted string
 }
 
 func main() {
@@ -23,12 +30,9 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	problems := getProblems(*problemsFileName)
-
 	shuffleProblems(problems)
-
-	score, questionsAttempted := takeTest(problems, *timeLimitInSeconds)
-
-	fmt.Printf("You have attempted %d question(s). You score %d out of %d.\n", questionsAttempted, score, len(problems))
+	score, questionsAttempted, incorrectProblemsAttempts := takeTest(problems, *timeLimitInSeconds)
+	printScoreAndCorrectAnswers(score, questionsAttempted, len(problems), incorrectProblemsAttempts)
 }
 
 func getAllRecordsFromCSVFile(fileName string) [][]string {
@@ -59,8 +63,12 @@ func getProblems(problemsFileName string) []problem {
 	return problems
 }
 
-func takeTest(problems []problem, timeLimitInSeconds int) (int, int) {
+func takeTest(problems []problem, timeLimitInSeconds int) (int, int, []problemAttempt) {
+	fmt.Printf("Press Enter to start test...")
+	bufio.NewReader(os.Stdin).ReadString('\n')
+
 	correctAnswers := 0
+	var incorrectProblemsAttempted []problemAttempt
 	var answerByUser string
 	var quizTimerCh <-chan time.Time
 
@@ -81,14 +89,16 @@ func takeTest(problems []problem, timeLimitInSeconds int) (int, int) {
 		select {
 		case <-quizTimerCh:
 			fmt.Println("\nTime is up!")
-			return correctAnswers, i
+			return correctAnswers, i, incorrectProblemsAttempted
 		case answerByUser = <-inputChannel:
 			if answerByUser == problem.answer {
 				correctAnswers++
+			} else {
+				incorrectProblemsAttempted = append(incorrectProblemsAttempted, problemAttempt{problem, answerByUser})
 			}
 		}
 	}
-	return correctAnswers, len(problems)
+	return correctAnswers, len(problems), incorrectProblemsAttempted
 }
 
 func startTimer(timeLimitInSeconds int) <-chan time.Time {
@@ -99,4 +109,24 @@ func shuffleProblems(problems []problem) {
 	rand.Shuffle(len(problems), func(i, j int) {
 		problems[i], problems[j] = problems[j], problems[i]
 	})
+}
+
+func printScoreAndCorrectAnswers(score, questionsAttempted, problemsCount int, incorrectProblemAttempts []problemAttempt) {
+	fmt.Printf("You have attempted %d question(s). You score %d out of %d.\n", questionsAttempted, score, problemsCount)
+	if len(incorrectProblemAttempts) > 0 {
+		fmt.Println("Incorrect answers solution")
+		fmt.Println("==========================")
+		writer := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(writer, "Question\tAttempted Answer\tCorrect Answer")
+		for _, p := range incorrectProblemAttempts {
+			fmt.Fprintf(
+				writer,
+				"%s\t%s\t%s\n",
+				p.problem.question,
+				p.answerAttempted,
+				p.problem.answer,
+			)
+		}
+		writer.Flush()
+	}
 }
