@@ -25,13 +25,17 @@ type problemAttempt struct {
 func main() {
 	problemsFileName := flag.String("csv_file_name", "problems.csv", "Path to the CSV file containing the quiz problems")
 	timeLimitInSeconds := flag.Int("quiz_time_limit", 30, "Time limit for the quiz in seconds")
+	perQuestionTimeLimitFlag := flag.Bool("per_question_time_limit_flag", false, "Flag for time limit per question")
+	perQuestionTimeLimitInSeconds := flag.Int("per_question_time_limit", 5, "Time limit per question in seconds")
 	flag.Parse()
 
 	rand.Seed(time.Now().UnixNano())
 
+	inputCh := startInputReader()
+
 	problems := getProblems(*problemsFileName)
 	shuffleProblems(problems)
-	score, questionsAttempted, incorrectProblemsAttempts := takeTest(problems, *timeLimitInSeconds)
+	score, questionsAttempted, incorrectProblemsAttempts := takeTest(problems, *timeLimitInSeconds, *perQuestionTimeLimitFlag, *perQuestionTimeLimitInSeconds, inputCh)
 	printScoreAndCorrectAnswers(score, questionsAttempted, len(problems), incorrectProblemsAttempts)
 }
 
@@ -63,34 +67,40 @@ func getProblems(problemsFileName string) []problem {
 	return problems
 }
 
-func takeTest(problems []problem, timeLimitInSeconds int) (int, int, []problemAttempt) {
+func takeTest(
+	problems []problem,
+	timeLimitInSeconds int,
+	perQuestionTimeLimitFlag bool,
+	perQuestionTimeLimitInSeconds int,
+	inputCh chan string,
+) (int, int, []problemAttempt) {
 	fmt.Printf("Press Enter to start test...")
-	bufio.NewReader(os.Stdin).ReadString('\n')
+	<-inputCh
 
 	correctAnswers := 0
 	var incorrectProblemsAttempted []problemAttempt
 	var answerByUser string
 	var quizTimerCh <-chan time.Time
+	var perQuestionTimerCh <-chan time.Time
 
 	quizTimerCh = startTimer(timeLimitInSeconds)
 
 	for i, problem := range problems {
-		fmt.Printf("Problem#%d: %s is ", i, problem.question)
+		fmt.Printf("Problem#%d: %s is ", i+1, problem.question)
 
-		// take user input
-		inputChannel := make(chan string)
-		go func() {
-			var input string
-			fmt.Scanln(&input)
-			inputChannel <- input
-		}()
+		if perQuestionTimeLimitFlag {
+			perQuestionTimerCh = startTimer(perQuestionTimeLimitInSeconds)
+		}
 
 		// wait for user input or timeout
 		select {
 		case <-quizTimerCh:
 			fmt.Println("\nTime is up!")
 			return correctAnswers, i, incorrectProblemsAttempted
-		case answerByUser = <-inputChannel:
+		case <-perQuestionTimerCh:
+			fmt.Println("\nTime up for this question!")
+			continue
+		case answerByUser = <-inputCh:
 			if answerByUser == problem.answer {
 				correctAnswers++
 			} else {
@@ -129,4 +139,18 @@ func printScoreAndCorrectAnswers(score, questionsAttempted, problemsCount int, i
 		}
 		writer.Flush()
 	}
+}
+
+func startInputReader() chan string {
+	inputCh := make(chan string)
+
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			inputCh <- scanner.Text()
+		}
+		close(inputCh)
+	}()
+
+	return inputCh
 }
