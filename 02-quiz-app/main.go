@@ -8,6 +8,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 )
@@ -61,7 +62,7 @@ func getProblems(problemsFileName string) []problem {
 
 	problems := make([]problem, len(records))
 	for i, record := range records {
-		problems[i] = problem{record[0], record[1]}
+		problems[i] = problem{record[0], strings.TrimSpace(record[1])}
 	}
 
 	return problems
@@ -101,7 +102,7 @@ func takeTest(
 			fmt.Println("\nTime up for this question!")
 			continue
 		case answerByUser = <-inputCh:
-			if answerByUser == problem.answer {
+			if strings.TrimSpace(answerByUser) == problem.answer {
 				correctAnswers++
 			} else {
 				incorrectProblemsAttempted = append(incorrectProblemsAttempted, problemAttempt{problem, answerByUser})
