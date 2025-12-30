@@ -1,3 +1,22 @@
-https://google.com
 https://github.com   
-   https://bad-url.test
+https://bad-url.test
+   google.com
+github.com
+golang.org
+stackoverflow.com
+openai.com
+example.com
+amazon.com
+   facebook.com
+   twitter.com
+   linkedin.com
+   microsoft.com
+   apple.com
+   netflix.com
+   cloudflare.com
+   reddit.com
+bbc.com
+      wikipedia.org
+      yahoo.com
+doesnotexist.openai
+httpstat.us/200?sleep=2000    

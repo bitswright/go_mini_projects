@@ -1,15 +1,16 @@
 package main
 
 import (
-	"flag"
-	"os"
-	"log"
 	"bufio"
-	"strings"
+	"flag"
 	"fmt"
-	"time"
+	"log"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"text/tabwriter"
+	"time"
 )
 
 type URLStatus struct {
@@ -19,16 +20,15 @@ type URLStatus struct {
 }
 
 func main() {
-	URLFileName := flag.String("file", "urls.txt", "File containing URLs (one per line)")
+	urlFileName := flag.String("file", "urls.txt", "File containing URLs (one per line)")
 	flag.Parse()
 
-	urls := fetchUrls(*URLFileName)
-
-	urlsStatus := checkUrls(urls)
-	printUrlsStatus(urlsStatus)
+	urls := fetchURLs(*urlFileName)
+	urlsStatus := checkURLs(urls)
+	printURLsStatus(urlsStatus)
 }
 
-func fetchUrls(fileName string) (urls []string) {
+func fetchURLs(fileName string) (urls []string) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Fatalf("Error while reading the file %s, error: %s", fileName, err)
@@ -50,30 +50,48 @@ func fetchUrls(fileName string) (urls []string) {
 	return
 }
 
-func checkUrls(urls []string) []URLStatus {
-	urlsStatus := make([]URLStatus, len(urls))
-	httpClient := http.Client{
-		Timeout: 5 * time.Second,
+func checkURLs(urls []string) []URLStatus {
+	workerCount := 5
+
+	// create channel for sending jobs
+	jobsCh := make(chan string)
+
+	// create channel for receiving results
+	resultsCh := make(chan URLStatus, workerCount)
+
+	// create wait group
+	var wg sync.WaitGroup
+	wg.Add(workerCount)
+
+	// create workers
+	for i := 0; i < workerCount; i++ {
+		go worker(jobsCh, resultsCh, &wg)
 	}
-	
-	for i, url := range urls {
-		startTime := time.Now()
-		resp, err := httpClient.Get(url)
-		responseTime := time.Since(startTime).Milliseconds()
-		if err != nil {
-			urlsStatus[i] = URLStatus{url, 0, 0} 
-		} else {
-			urlsStatus[i] = URLStatus{url, resp.StatusCode, responseTime} 
+
+	// send urls on jobCh and close the channel
+	// as no more urls are to be sent for checking by workers
+	go func() {
+		for _, url := range urls {
+			jobsCh <- url
 		}
-		if resp != nil {
-			resp.Body.Close()
-		}
+		close(jobsCh)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(resultsCh)
+	}()
+
+	// receive results from resultsCh
+	var urlsStatus []URLStatus
+	for result := range resultsCh {
+		urlsStatus = append(urlsStatus, result)
 	}
 
 	return urlsStatus
 }
 
-func printUrlsStatus(urlsStatus []URLStatus) {
+func printURLsStatus(urlsStatus []URLStatus) {
 	writer := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(writer, "URL\tSTATUS\tRESPONSE TIME")
 	for _, URLStatus := range urlsStatus {
@@ -102,4 +120,24 @@ func getFullURL(url string) string {
 		url = "http://" + url
 	}
 	return url
+}
+
+func worker(jobsCh <-chan string, resultsCh chan<- URLStatus, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	httpClient := http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	for url := range jobsCh {
+		startTime := time.Now()
+		resp, err := httpClient.Get(url)
+		responseTime := time.Since(startTime).Milliseconds()
+		if err != nil {
+			resultsCh <- URLStatus{url, 0, 0}
+			continue
+		}
+		resultsCh <- URLStatus{url, resp.StatusCode, responseTime}
+		resp.Body.Close()
+	}
 }
