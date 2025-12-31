@@ -20,12 +20,17 @@ type URLStatus struct {
 }
 
 func main() {
+	startTime := time.Now()
 	urlFileName := flag.String("file", "urls.txt", "File containing URLs (one per line)")
+	rateLimitFlag := flag.Bool("rate_lim", false, "Flag to enable rate limiting")
 	flag.Parse()
 
 	urls := fetchURLs(*urlFileName)
-	urlsStatus := checkURLs(urls)
+	urlsStatus := checkURLs(urls, *rateLimitFlag)
 	printURLsStatus(urlsStatus)
+
+	totalTimeTaken := time.Since(startTime)
+	fmt.Printf("Execution Time: %v s\n", totalTimeTaken)
 }
 
 func fetchURLs(fileName string) (urls []string) {
@@ -50,7 +55,7 @@ func fetchURLs(fileName string) (urls []string) {
 	return
 }
 
-func checkURLs(urls []string) []URLStatus {
+func checkURLs(urls []string, rateLimitFlag bool) []URLStatus {
 	workerCount := 5
 
 	// create channel for sending jobs
@@ -63,9 +68,15 @@ func checkURLs(urls []string) []URLStatus {
 	var wg sync.WaitGroup
 	wg.Add(workerCount)
 
+	// create channel for rate limiting
+	rateLimitTicker := time.NewTicker(200 * time.Millisecond)
+	defer rateLimitTicker.Stop()
+	// time.Tick return <-chan time.Time
+	// we will receive a message from this channel in every 200ms (i.e. 5 message every second)
+
 	// create workers
 	for i := 0; i < workerCount; i++ {
-		go worker(jobsCh, resultsCh, &wg)
+		go worker(jobsCh, resultsCh, &wg, rateLimitTicker, rateLimitFlag)
 	}
 
 	// send urls on jobCh and close the channel
@@ -122,7 +133,13 @@ func getFullURL(url string) string {
 	return url
 }
 
-func worker(jobsCh <-chan string, resultsCh chan<- URLStatus, wg *sync.WaitGroup) {
+func worker(
+	jobsCh <-chan string, 
+	resultsCh chan<- URLStatus, 
+	wg *sync.WaitGroup,
+	rateLimitTicker *time.Ticker ,
+	rateLimitFlag bool,
+) {
 	defer wg.Done()
 
 	httpClient := http.Client{
@@ -130,6 +147,12 @@ func worker(jobsCh <-chan string, resultsCh chan<- URLStatus, wg *sync.WaitGroup
 	}
 
 	for url := range jobsCh {
+		if rateLimitFlag {
+			<- rateLimitTicker.C 
+			// Block until a message is received from this channel 
+			// this helps us achieve rate limiting 
+		}
+
 		startTime := time.Now()
 		resp, err := httpClient.Get(url)
 		responseTime := time.Since(startTime).Milliseconds()

@@ -26,3 +26,4 @@ It demonstrates how Go’s concurrency primitives (goroutines, channels, and wor
     | -workers    | Number of concurrent workers           | 5        |
     | -timeout    | Request timeout (seconds)              | 3        |
     | -retries    | Number of retries per URL              | 0        |
+    | -rate_lim   | Flag to enable rate limiting           | false    |
