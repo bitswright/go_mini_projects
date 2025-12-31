@@ -11,6 +11,7 @@ import (
 	"sync"
 	"text/tabwriter"
 	"time"
+	"sort"
 )
 
 const (
@@ -32,6 +33,7 @@ func main() {
 
 	urls := fetchURLs(*urlFileName)
 	urlsStatus := checkURLs(urls, *rateLimitFlag, *retries)
+	sortURLsStatus(urls, urlsStatus)
 	printURLsStatus(urlsStatus)
 
 	totalTimeTaken := time.Since(startTime)
@@ -105,6 +107,16 @@ func checkURLs(urls []string, rateLimitFlag bool, retries int) []URLStatus {
 	}
 
 	return urlsStatus
+}
+
+func sortURLsStatus(urls []string, urlsStatus []URLStatus) {
+	urlIndexMap := make(map[string]int)
+	for i, url := range urls {
+		urlIndexMap[url] = i
+	}
+	sort.Slice(urlsStatus, func(i, j int) bool {
+		return urlIndexMap[urlsStatus[i].URL] < urlIndexMap[urlsStatus[j].URL]
+	})
 }
 
 func printURLsStatus(urlsStatus []URLStatus) {
